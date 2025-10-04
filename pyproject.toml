@@ -1,0 +1,16 @@
+[project]
+name = "sudoku-ocr"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+  "opencv-python",
+  "numpy",
+  "pillow",
+  "tensorflow>=2.12; platform_system != 'Darwin' or platform_machine != 'arm64'",
+  "pytesseract; extra == 'tesseract'",
+  "pyyaml",
+  "rich"
+]
+
+[project.scripts]
+sudoku-ocr = "sudoku_ocr.cli:main"

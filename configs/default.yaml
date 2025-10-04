@@ -1,0 +1,16 @@
+ocr:
+  backend: "cnn"           # "tesseract" possible
+  # cnn_weights: "models/mnist_cnn.keras"
+  cnn_weights: "models/sudoku_cnn.keras"  # alternative weights
+detect:
+  warp_size: 450
+  thresh_block: 11
+  thresh_C: 2
+cells:
+  min_area: 30
+predict:
+  conf_min: 0.6
+overlay:
+  color: [255, 255, 255]
+  scale: 1.2
+  thickness: 2
