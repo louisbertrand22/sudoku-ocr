@@ -2,6 +2,12 @@ import os
 import cv2
 import numpy as np
 
+from .cells import grid_score
+from .geometry import four_point_transform
+
+_SCORE_SIZE = 450  # taille de redressement pour noter les candidats
+_SCORE_TIE = 0.05  # écart de score considéré comme une égalité
+
 
 
 
@@ -77,8 +83,9 @@ def find_sudoku_quad(img_bgr: np.ndarray):
     _dump_debug("03_closed.png", closed)
 
 
-    # Contours
-    contours, _ = cv2.findContours(opened, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    # Contours : RETR_LIST et pas RETR_EXTERNAL, sinon une grille entourée d'un
+    # cadre (bord d'image, page) n'est jamais candidate
+    contours, _ = cv2.findContours(opened, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     if not contours:
         return None
 
@@ -86,15 +93,27 @@ def find_sudoku_quad(img_bgr: np.ndarray):
     contours = sorted(contours, key=cv2.contourArea, reverse=True)
 
 
-    # Heuristic: skip tiny contours (< 10% of image area)
+    # Candidats >= 10% de l'image, notés par ressemblance à une grille 9x9 une
+    # fois redressés : le plus grand quadrilatère n'est pas forcément la grille
     min_area = 0.1 * (h * w)
+    candidates = []  # (score, area, quad, cnt)
     for cnt in contours[:20]:
-        if cv2.contourArea(cnt) < min_area:
+        area = cv2.contourArea(cnt)
+        if area < min_area:
             continue
         quad = _approx_quad(cnt)
-        if quad is not None and len(quad) == 4:
-            _dump_debug("04_contour.png", cv2.drawContours(img_bgr.copy(), [cnt], -1, (0, 255, 0), 3))
-            return quad.astype(np.float32)
+        if quad is None or len(quad) != 4:
+            continue
+        warped, _, _ = four_point_transform(img_bgr, quad, size=_SCORE_SIZE)
+        candidates.append((grid_score(warped), area, quad, cnt))
+
+    if candidates:
+        best_score = max(c[0] for c in candidates)
+        # à score quasi égal, le plus grand (contour extérieur de la grille)
+        _, _, quad, cnt = max((c for c in candidates if c[0] >= best_score - _SCORE_TIE),
+                              key=lambda c: c[1])
+        _dump_debug("04_contour.png", cv2.drawContours(img_bgr.copy(), [cnt], -1, (0, 255, 0), 3))
+        return quad.astype(np.float32)
 
 
     # Last resort: largest contour regardless of area

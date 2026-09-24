@@ -28,8 +28,8 @@ def _peaks_from_projection(proj: np.ndarray, n: int, min_gap: int = 2):
         return None
     return centers
 
-def detect_grid_lines(warped: np.ndarray) -> tuple[list[int], list[int]]:
-    """Retourne (xs, ys): positions des 10 lignes verticales et 10 horizontales (dans l’image rectifiée)."""
+def line_projections(warped: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Projections des lignes verticales (par colonne) et horizontales (par ligne) de l'image rectifiée."""
     gray = cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY)
     thr = cv2.adaptiveThreshold(
         gray, 255,
@@ -44,8 +44,32 @@ def detect_grid_lines(warped: np.ndarray) -> tuple[list[int], list[int]]:
     v_lines = cv2.dilate(cv2.erode(thr, v_ker, 1), v_ker, 1)
     h_lines = cv2.dilate(cv2.erode(thr, h_ker, 1), h_ker, 1)
 
-    v_proj = v_lines.sum(axis=0)  # (W,)
-    h_proj = h_lines.sum(axis=1)  # (H,)
+    v_proj = v_lines.sum(axis=0).astype(np.float64)  # (W,)
+    h_proj = h_lines.sum(axis=1).astype(np.float64)  # (H,)
+    return v_proj, h_proj
+
+def _regular_score(proj: np.ndarray, n: int = 10) -> float:
+    """Part de l'encre des lignes située sur n positions régulièrement espacées (0..1)."""
+    size = proj.size
+    if size == 0 or proj.max() <= 0:
+        return 0.0
+    tol = max(2, size // 90)
+    peak = proj.max()
+    hits = []
+    for i in range(n):
+        p = int(round(i * (size - 1) / (n - 1)))
+        hits.append(proj[max(0, p - tol):p + tol + 1].max() / peak)
+    return float(np.mean(hits))
+
+def grid_score(warped: np.ndarray) -> float:
+    """Ressemblance à une grille de sudoku : 10 lignes régulières dans chaque direction (0..1)."""
+    v_proj, h_proj = line_projections(warped)
+    return min(_regular_score(v_proj), _regular_score(h_proj))
+
+def detect_grid_lines(warped: np.ndarray) -> tuple[list[int], list[int]]:
+    """Retourne (xs, ys): positions des 10 lignes verticales et 10 horizontales (dans l’image rectifiée)."""
+    H, W = warped.shape[:2]
+    v_proj, h_proj = line_projections(warped)
     xs = _peaks_from_projection(v_proj, n=10)
     ys = _peaks_from_projection(h_proj, n=10)
 
