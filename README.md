@@ -16,7 +16,7 @@ L'extra `tesseract` demande aussi le binaire `tesseract` installé sur le systè
 
 ## Modèle
 
-Un modèle entraîné est versionné (`models/sudoku_cnn.keras`). Pour le réentraîner sur `data/assets` (~30 s sur CPU) :
+Un modèle entraîné est versionné (`models/sudoku_cnn.keras`). Pour le réentraîner sur `data/assets` (~2 min sur CPU) :
 
 ```bash
 make train                 # -> models/sudoku_cnn.keras + models/sudoku_cnn.meta.json

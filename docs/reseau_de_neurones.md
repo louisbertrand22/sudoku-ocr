@@ -1,8 +1,9 @@
 # Le réseau de neurones de sudoku-ocr
 
 > Toutes les valeurs de ce document ont été mesurées sur le modèle versionné
-> `models/sudoku_cnn.keras` (commit `7d7bdf6`) et sur le jeu de validation exact
-> utilisé à l'entraînement. Les commandes pour les reproduire sont en fin de document.
+> `models/sudoku_cnn.keras` (entraîné par `make train`, recette E3 de la section 7)
+> et sur un jeu de test de 624 images jamais vues à l'entraînement. Les commandes
+> pour les reproduire sont en fin de document.
 
 ## 1. Ce que fait (et ne fait pas) le réseau
 
@@ -118,49 +119,110 @@ et 1 152 pour la couche dense. C'est négligeable pour un processeur moderne.
 | Nombre | 4 157 images (534 « 1 », 513 « 2 », 472 « 3 », 446 « 4 », 440 « 5 », 414 « 6 », 492 « 7 », 427 « 8 », 419 « 9 ») |
 | Classes | 9 (chiffres 1 à 9). La classe 0 (case vide) a été retirée : les cases vides sont détectées avant le réseau (contraste de la case, voir `cells.is_blank_cell`). |
 | Nettoyage | images floues ou sans contraste écartées dans `data/assets_trash/` (`scripts/auto_filter.py`) |
-| Séparation | stratifiée : **3 533 images d'entraînement (85 %)**, **624 de validation (15 %)**, graine 42 |
+
+Séparation stratifiée en trois jeux, chacun gardant la proportion de chaque chiffre :
+
+| Jeu | Images | Sert à |
+|---|---:|---|
+| Entraînement | 3 003 | apprendre les poids |
+| Arrêt anticipé | 530 | décider quand arrêter l'entraînement |
+| **Test** | **624** | **mesurer, uniquement** : jamais utilisé pendant l'entraînement (graine 42) |
 
 Les classes sont équilibrées (de 414 à 534 images), il n'a donc pas été
 nécessaire de pondérer les classes.
 
 ## 6. Entraînement (`scripts/train_cnn.py`)
 
+### Idée principale : apprendre sur ce que le réseau verra vraiment
+
+Dans l'app, un chiffre n'arrive jamais « brut » au réseau : il est d'abord extrait
+de sa case, binarisé, recadré puis réduit à 20 px dans un carré de 28 (section 9).
+L'entraînement reproduit exactement ce chemin :
+
+1. chaque image 28×28 est agrandie en case de 56×56, la taille d'une vraie case ;
+2. **5 versions abîmées** sont créées par image : rotation ±8°, zoom ±15 %, décalage
+   ±3 px, trait plus épais ou plus fin, flou, contraste réduit ou fond grisé, bruit,
+   compression JPEG ;
+3. l'original et ses 5 variantes passent par **le prétraitement de l'app**
+   (`extract_digit` puis `to_28x28_white_on_black`).
+
+On obtient **17 797 images d'entraînement**. Une poignée est rejetée par l'extraction,
+comme elle le serait dans l'app.
+
+### Réglages
+
 | Réglage | Valeur | Pourquoi |
 |---|---|---|
-| Prétraitement | redimensionnement 28×28, pixels ÷ 255, inversion (chiffre blanc sur fond noir) | même convention que MNIST |
-| Augmentation | rotation ±18°, translation ±5 %, zoom ±10 %, contraste ±20 % | simule des photos légèrement de travers ou mal éclairées |
 | Fonction de perte | entropie croisée catégorielle | standard pour la classification |
 | Optimiseur | Adam, taux d'apprentissage 10⁻³ | |
-| Lot (batch) | 256 images, soit 14 pas par époque | |
-| Époques | 20 au maximum | |
-| ReduceLROnPlateau | divise le taux par 2 après 3 époques sans progrès (minimum 10⁻⁵) | affine en fin d'entraînement |
-| EarlyStopping | arrête après 6 époques sans progrès de la perte de validation, **restaure les meilleurs poids** | évite le sur-apprentissage |
+| Lot (batch) | 64 images, soit environ 280 pas par époque | |
+| Époques | 60 au maximum (25 en pratique) | |
+| ReduceLROnPlateau | divise le taux par 2 après 5 époques sans progrès (minimum 10⁻⁵) | affine en fin d'entraînement |
+| EarlyStopping | arrête après 10 époques sans progrès sur le jeu d'arrêt anticipé, **restaure les meilleurs poids** | évite le sur-apprentissage |
 | Momentum BatchNorm | **0,9** au lieu de 0,99 par défaut | voir ci-dessous |
+| Graine | 1 | entraînement reproductible |
 
-**Le piège du momentum BatchNorm.** Avec seulement 14 pas par époque, les
-statistiques glissantes de la BatchNormalization n'avaient pas le temps de converger
-avec le momentum par défaut (0,99). Le réseau apprenait bien (94 % sur
-l'entraînement) mais s'effondrait en utilisation réelle : il répondait « 9 » à
-presque tout (10 % de précision en validation, le hasard). Un momentum de 0,9
-règle le problème.
+**Le piège du momentum BatchNorm.** Avec peu de pas par époque, les statistiques
+glissantes de la BatchNormalization n'avaient pas le temps de converger avec le
+momentum par défaut (0,99). Le réseau apprenait bien (94 % sur l'entraînement) mais
+s'effondrait en utilisation réelle : il répondait « 9 » à presque tout (10 % de
+précision en validation, le hasard). Un momentum de 0,9 règle le problème.
 
-L'entraînement prend environ 30 secondes sur un processeur.
+L'entraînement prend environ **2 minutes** sur un processeur (`make train`).
 
-## 7. Métriques
+## 7. Expériences : comment la recette a été choisie
 
-Mesurées sur les **624 images de validation**, jamais vues pendant l'apprentissage
-des poids.
+`scripts/ocr_experiments.py` entraîne plusieurs recettes sur les mêmes données, avec
+2 graines chacune, et les mesure sur le même jeu de test **avec le prétraitement de
+l'app**. Une image que l'extraction rejette compte comme une erreur, et 9 des 624
+images sont dans ce cas : **la précision maximale atteignable est donc 98,6 %**.
+
+La mesure la plus importante est le nombre de **chiffres faux acceptés** : une
+réponse fausse mais assez sûre d'elle (confiance ≥ 0,6) pour être inscrite dans la
+grille. Un seul suffit à rendre la grille insoluble ou la solution fausse. Une
+réponse rejetée laisse seulement une case vide, que le solveur comble souvent.
+
+| Recette | Précision (test app) | Couverture | Chiffres faux acceptés |
+|---|---:|---:|---:|
+| E0 : ancien modèle (niveaux de gris, lots de 256, 20 époques) | 96,3 % | 91,3 % | 4 |
+| E1 : ancienne recette, réentraînée | 95,7 à 95,8 % | 94 à 95 % | 6 à 8 |
+| E2 : ancienne recette, plus longue (lots de 64, 60 époques) | 95,5 à 96,5 % | 96 à 98 % | 7 à 11 |
+| **E3 : prétraitement de l'app + images abîmées (retenue)** | **97,8 à 98,1 %** | **98 %** | **1 à 3** |
+| E4 : E3 + 5 400 chiffres synthétiques (22 polices système) | 97,8 à 98,1 % | 98 % | 3 à 4 |
+
+*Couverture : part des chiffres lus avec une confiance ≥ 0,6 (les autres laissent la case vide).*
+
+Enseignements :
+- **Aligner l'entraînement sur l'app est le vrai gain.** E3 frôle le plafond de 98,6 %
+  avec les deux graines.
+- **Entraîner plus longtemps est un piège.** E2 atteint 99,5 % sur le test en niveaux
+  de gris, mais inscrit *plus* de chiffres faux dans les conditions réelles.
+- **Les chiffres synthétiques n'apportent rien de mesurable ici** et rendent
+  l'entraînement non reproductible : le résultat dépend des polices installées sur
+  la machine. E3 est donc préféré à E4.
+- Sur les 206 cases des grilles d'exemple et sur 10 chiffres d'une capture LinkedIn
+  (police jamais vue, mode sombre), **tous les modèles font un sans-faute**. Ces tests
+  sont trop faciles pour départager les recettes.
+- **Nuance :** le modèle livré vient de la graine 1, qui est la meilleure des deux
+  graines de E3 sur ce test. Le chiffre de 98,1 % est donc légèrement flatteur. La
+  graine 0 donne 97,8 % et 3 chiffres faux acceptés.
+
+## 8. Métriques du modèle livré
+
+Mesurées sur les **624 images de test**, avec le prétraitement de l'app.
 
 ### Précision globale
 
-| Métrique | Valeur |
-|---|---|
-| **Précision (accuracy)** | **94,7 %** (591 / 624) |
-| Précision moyenne par classe (macro) | 95,2 % |
-| Rappel moyen par classe (macro) | 94,6 % |
-| F1 moyen (macro) | 94,6 % |
+| Métrique | Ancien modèle | **Modèle livré** |
+|---|---:|---:|
+| Précision (rejets de l'extraction comptés comme erreurs) | 96,3 % | **98,1 %** |
+| Précision sur les 615 images extraites | 97,7 % | **99,5 %** |
+| Confiance médiane | 0,94 | **1,00** |
+| Couverture (confiance ≥ 0,6) | 91,3 % | **97,9 %** |
+| Précision des réponses acceptées | 99,3 % | **99,8 %** |
+| Chiffres faux acceptés | 4 | **1** |
 
-### Par chiffre
+### Par chiffre (sur les 615 images extraites)
 
 - La **précision** d'un chiffre est la part de bonnes réponses parmi les fois où le
   réseau a répondu ce chiffre.
@@ -168,15 +230,15 @@ des poids.
 
 | Chiffre | Précision | Rappel | F1 | Images |
 |---|---:|---:|---:|---:|
-| 1 | 95,1 % | 97,5 % | 96,3 % | 80 |
-| 2 | 96,2 % | 97,4 % | 96,8 % | 77 |
-| 3 | 100 % | 85,9 % | 92,4 % | 71 |
-| 4 | 83,8 % | 100 % | 91,2 % | 67 |
-| 5 | 100 % | 90,9 % | 95,2 % | 66 |
-| 6 | 86,1 % | 100 % | 92,5 % | 62 |
+| 1 | 97,5 % | 100 % | 98,8 % | 79 |
+| 2 | 100 % | 98,7 % | 99,3 % | 75 |
+| 3 | 100 % | 98,6 % | 99,3 % | 71 |
+| 4 | 100 % | 100 % | 100 % | 63 |
+| 5 | 100 % | 100 % | 100 % | 65 |
+| 6 | 98,4 % | 100 % | 99,2 % | 61 |
 | 7 | 100 % | 98,6 % | 99,3 % | 74 |
-| 8 | 95,2 % | 93,8 % | 94,5 % | 64 |
-| 9 | 100 % | 87,3 % | 93,2 % | 63 |
+| 8 | 100 % | 100 % | 100 % | 64 |
+| 9 | 100 % | 100 % | 100 % | 63 |
 
 ### Matrice de confusion
 
@@ -184,22 +246,20 @@ Lignes = vrai chiffre, colonnes = chiffre prédit. La diagonale correspond aux b
 
 ```
          1    2    3    4    5    6    7    8    9
-  1     78    .    .    2    .    .    .    .    .
-  2      .   75    .    2    .    .    .    .    .
-  3      4    1   61    3    .    .    .    2    .
-  4      .    .    .   67    .    .    .    .    .
-  5      .    1    .    .   60    5    .    .    .
-  6      .    .    .    .    .   62    .    .    .
-  7      .    1    .    .    .    .   73    .    .
-  8      .    .    .    1    .    3    .   60    .
-  9      .    .    .    5    .    2    .    1   55
+  1     79    .    .    .    .    .    .    .    .
+  2      1   74    .    .    .    .    .    .    .
+  3      1    .   70    .    .    .    .    .    .
+  4      .    .    .   63    .    .    .    .    .
+  5      .    .    .    .   65    .    .    .    .
+  6      .    .    .    .    .   61    .    .    .
+  7      .    .    .    .    .    1   73    .    .
+  8      .    .    .    .    .    .    .   64    .
+  9      .    .    .    .    .    .    .    .   63
 ```
 
-Ce qu'elle montre :
-- **Le 4 et le 6 « attirent » les erreurs.** Le réseau répond 4 à tort 13 fois (des 1, 2, 3, 8 et 9)
-  et 6 à tort 10 fois (des 5, 8 et 9). D'où leur rappel parfait mais leur précision plus faible.
-- **Les confusions visuellement logiques** : 5 → 6 (5 fois), 9 → 4 (5 fois), 3 → 1 (4 fois).
-- Le 7 est quasi parfait (1 seule erreur).
+Il ne reste que **3 erreurs sur 615** : un 2 et un 3 lus « 1 », et un 7 lu « 6 ».
+Les confusions typiques de l'ancien modèle (réponses « 4 » et « 6 » données à tort,
+5 → 6, 9 → 4, mesurées sur le test en niveaux de gris) ont disparu.
 
 ### Confiance et seuil `conf_min`
 
@@ -207,28 +267,17 @@ Le réseau donne une probabilité à sa réponse. Dans le pipeline, une réponse
 confiance inférieure à **0,6** (`predict.conf_min` dans `configs/default.yaml`) est
 ignorée : la case est laissée vide plutôt que remplie avec un chiffre douteux.
 
-| | |
-|---|---|
-| Confiance médiane | 0,85 |
-| Confiance moyenne, bonnes réponses | 0,79 |
-| Confiance moyenne, erreurs | 0,46 |
-| Images sous le seuil 0,6 | **20,5 %** |
-| **Précision des réponses acceptées (≥ 0,6)** | **98,8 %** |
-
-Le seuil fait bien son travail : les erreurs ont une confiance nettement plus basse,
-et en ne gardant que les réponses sûres, la précision passe de 94,7 % à 98,8 %.
-En contrepartie, 1 image sur 5 est rejetée. Le solveur compense souvent, puisqu'une
-case vide de plus reste en général résoluble. Dans l'interface, la case manquante
-peut aussi être corrigée à la main.
+L'ancien modèle manquait d'assurance (confiance médiane 0,94 dans les conditions de
+l'app, et même 0,85 en niveaux de gris bruts). Il rejetait ainsi près d'un chiffre sur
+dix. Le modèle livré est sûr de lui (médiane 1,00) : **97,9 %** des chiffres sont
+acceptés, et une seule réponse fausse passe le seuil.
 
 ### Sur de vraies grilles
 
 Sur les 6 grilles d'exemple (`data/samples/`, 3 en mode clair et 3 en mode sombre),
 **les 206 chiffres sont lus sans aucune erreur** (tests `tests/test_end_to_end.py`).
-Les grilles imprimées sont plus nettes que les images d'entraînement, ce qui explique
-un meilleur résultat qu'en validation.
 
-## 8. Du chiffre de la case à l'entrée du réseau
+## 9. Du chiffre de la case à l'entrée du réseau
 
 Avant le réseau, chaque case passe par ces étapes (`cells.extract_digit`) :
 
@@ -246,35 +295,36 @@ Avant le réseau, chaque case passe par ces étapes (`cells.extract_digit`) :
    `classes` fait correspondre chaque sortie du réseau à un chiffre. Sans ce fichier,
    la sortie n° 0 serait prise pour un « 0 » (case vide) au lieu d'un « 1 ».
 
+L'entraînement suit exactement ces mêmes étapes (section 6).
+
 En cas de doute, la case est relue avec trois binarisations différentes et les réponses
 sont départagées par un vote (`pipeline._ocr_cell_multi`).
 
-## 9. Limites connues
+## 10. Limites connues
 
-- **Le réseau manque d'assurance.** Une confiance médiane de 0,85 est basse pour un
-  problème aussi simple, et 20 % des chiffres tombent sous le seuil. Un entraînement
-  plus long ou avec moins de dropout améliorerait sans doute ce point.
-- **La validation sert aussi à arrêter l'entraînement.** EarlyStopping et la sauvegarde
-  du meilleur modèle regardent la perte de validation, donc les 94,7 % sont légèrement
-  optimistes. Un jeu de test séparé, jamais utilisé à l'entraînement, donnerait une mesure
-  plus honnête.
-- **Écart entre entraînement et utilisation.** À l'entraînement, les images sont en
-  niveaux de gris lissés. En utilisation, le chiffre est binarisé (noir ou blanc) puis
-  redimensionné. Les deux se ressemblent mais ne sont pas identiques.
+- **1,4 % des chiffres sont perdus avant le réseau.** 9 images de test sur 624 sont
+  rejetées par l'extraction (tache jugée trop fine ou décentrée). Elles sont désormais
+  la première source d'erreur, devant le réseau lui-même.
 - **Chiffres imprimés uniquement.** Aucune écriture manuscrite dans les données : une
   grille remplie à la main serait mal lue.
-- **Grilles 9×9 uniquement.** Les mini-sudokus 6×6 (LinkedIn…) ne sont pas pris en charge.
+- **Grilles 9×9 uniquement.** Les mini-sudokus 6×6 (LinkedIn…) ne sont pas pris en charge,
+  même si leurs chiffres sont bien lus (section 7).
+- **Tests sur de vraies photos encore rares.** Les mesures reposent sur un seul jeu de
+  données imprimé et 6 grilles d'exemple. Des photos prises en biais ou mal éclairées
+  restent à mesurer.
 - **Lenteur évitable.** Le pipeline interroge le réseau case par case : environ 28 ms par
   appel, donc jusqu'à 2 à 3 s pour une grille pleine. Un seul appel pour toutes les cases
   prendrait environ 50 ms au total.
 
-## 10. Reproduire ces mesures
+## 11. Reproduire ces mesures
 
 ```bash
-make install                   # environnement avec les extras train + dev
-make train                     # réentraîne models/sudoku_cnn.keras (+ .meta.json)
-python scripts/debug_val.py    # précision, confiance, rapport par chiffre et matrice de confusion
-make test                      # dont la lecture exacte des 6 grilles d'exemple
+make install                        # environnement avec les extras train + dev
+make train                          # réentraîne models/sudoku_cnn.keras (+ .meta.json), ~2 min
+python scripts/debug_val.py         # métriques, rapport par chiffre et matrice de confusion (test)
+python scripts/dump_preprocessed.py # exemples d'entraînement tels que le réseau les voit
+python scripts/ocr_experiments.py   # compare les recettes E0 à E4 (2 graines, ~15 min)
+make test                           # dont la lecture exacte des 6 grilles d'exemple
 ```
 
 Architecture et nombre de paramètres :
@@ -284,6 +334,5 @@ from tensorflow import keras
 keras.models.load_model("models/sudoku_cnn.keras", compile=False).summary()
 ```
 
-Réentraîner produit un modèle légèrement différent : initialisation et augmentation
-sont aléatoires, donc les métriques varient d'environ ±1 à 2 points d'un entraînement
-à l'autre.
+`make train` utilise la graine 1 et redonne exactement le modèle livré sur la même
+machine. Avec une autre graine, les métriques varient d'environ ±0,3 point.
