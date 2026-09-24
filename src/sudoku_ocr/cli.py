@@ -13,7 +13,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--image', required=True, help="image d'entrée")
     parser.add_argument('--out', default='data/outputs/result.jpg', help="image de sortie")
     parser.add_argument('--config', default=None,
-                        help=f"fichier YAML (défaut : {DEFAULT_CONFIG_PATH} s'il existe)")
+                        help=f"fichier YAML appliqué par-dessus {DEFAULT_CONFIG_PATH} "
+                             f"(qui est toujours lu en premier s'il existe)")
     parser.add_argument('--backend', choices=['cnn', 'tesseract'], default=None,
                         help="surcharge ocr.backend")
     parser.add_argument('--weights', default=None, help="surcharge ocr.cnn_weights")
@@ -21,15 +22,18 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def config_from_args(args: argparse.Namespace) -> dict:
-    path = args.config
-    if path is None and os.path.exists(DEFAULT_CONFIG_PATH):
-        path = DEFAULT_CONFIG_PATH
+    # default.yaml d'abord, puis --config ne remplace que les clés qu'il contient
+    paths = []
+    if os.path.exists(DEFAULT_CONFIG_PATH):
+        paths.append(DEFAULT_CONFIG_PATH)
+    if args.config is not None:
+        paths.append(args.config)
     ocr = {}
     if args.backend is not None:
         ocr["backend"] = args.backend
     if args.weights is not None:
         ocr["cnn_weights"] = args.weights
-    return load_config(path, {"ocr": ocr} if ocr else None)
+    return load_config(paths, {"ocr": ocr} if ocr else None)
 
 
 def main(argv: list[str] | None = None) -> int:

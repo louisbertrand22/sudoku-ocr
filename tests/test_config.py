@@ -68,6 +68,27 @@ def test_cli_reads_explicit_config_and_flags_override(tmp_path):
     assert cfg["predict"]["conf_min"] == 0.9
 
 
+def test_later_files_override_earlier_ones_key_by_key(tmp_path):
+    base = tmp_path / "base.yaml"
+    base.write_text("ocr:\n  cnn_weights: base.keras\npredict:\n  conf_min: 0.7\n", encoding="utf-8")
+    top = tmp_path / "top.yaml"
+    top.write_text("predict:\n  conf_min: 0.9\n", encoding="utf-8")
+    cfg = load_config([str(base), str(top)])
+    assert cfg["ocr"]["cnn_weights"] == "base.keras"
+    assert cfg["predict"]["conf_min"] == 0.9
+
+
+def test_cli_config_is_layered_on_repo_default(monkeypatch, tmp_path):
+    # ma_config.yaml sans cnn_weights : hérite de configs/default.yaml, pas de MNIST
+    path = _write(tmp_path, "overlay:\n  show_mode: new\n")
+    monkeypatch.chdir(ROOT)
+    args = cli.build_parser().parse_args(["--image", "x.png", "--config", path])
+    cfg = cli.config_from_args(args)
+    assert cfg["ocr"]["cnn_weights"] == "models/sudoku_cnn.keras"
+    assert cfg["overlay"]["show_mode"] == "new"
+    assert cfg["overlay"]["color"] == [255, 255, 255]  # valeur de default.yaml conservée
+
+
 def test_cli_uses_repo_default_config(monkeypatch):
     monkeypatch.chdir(ROOT)
     args = cli.build_parser().parse_args(["--image", "x.png"])

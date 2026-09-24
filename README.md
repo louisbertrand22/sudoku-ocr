@@ -33,9 +33,11 @@ sudoku-ocr --image photo.jpg --config ma_config.yaml
 sudoku-ocr --image photo.jpg --weights autre_modele.keras --backend cnn
 ```
 
-La configuration est lue dans `configs/default.yaml` (ou `--config`), puis surchargée
-par les options. Les clés acceptées et leurs valeurs par défaut sont dans
-`src/sudoku_ocr/config.py` ; une clé inconnue est refusée.
+La configuration est construite par couches, chacune ne remplaçant que les clés
+qu'elle contient : valeurs par défaut du code, puis `configs/default.yaml` (toujours
+lu s'il existe dans le dossier courant), puis le fichier `--config`, puis les options
+`--weights` / `--backend`. Un `ma_config.yaml` peut donc ne contenir que ce qui change.
+Les clés acceptées sont dans `src/sudoku_ocr/config.py` ; une clé inconnue est refusée.
 
 Debug : `SUDOKU_DEBUG=1` écrit les images intermédiaires de la détection dans
 `data/outputs/debug/` (ou `SUDOKU_DEBUG_DIR`).

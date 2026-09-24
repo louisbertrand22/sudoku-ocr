@@ -62,10 +62,15 @@ def _validate(cfg: dict) -> None:
             raise ValueError(f"overlay.{key} doit être une liste [B, G, R]")
 
 
-def load_config(path: str | None = None, overrides: dict | None = None) -> dict:
-    """Valeurs par défaut <- fichier YAML (si fourni) <- overrides (ex. options CLI)."""
+def load_config(paths: str | list[str] | None = None, overrides: dict | None = None) -> dict:
+    """Valeurs par défaut <- fichiers YAML dans l'ordre donné <- overrides (ex. options CLI).
+
+    Chaque fichier ne remplace que les clés qu'il contient.
+    """
+    if isinstance(paths, str):
+        paths = [paths]
     cfg = copy.deepcopy(DEFAULTS)
-    if path is not None:
+    for path in paths or []:
         if not os.path.exists(path):
             raise FileNotFoundError(f"Config introuvable: {path}")
         with open(path, encoding="utf-8") as f:
