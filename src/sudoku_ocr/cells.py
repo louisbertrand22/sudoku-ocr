@@ -69,35 +69,59 @@ def split_cells_by_lines(warped: np.ndarray, xs: list[int], ys: list[int]) -> li
             cells.append(cell)
     return cells
 
-def extract_digit(cell: np.ndarray) -> np.ndarray | None:
-    """Retourne une image 28x28 (digit blanc sur noir) ou None si case vide."""
-    gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
-    thr = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
-                                cv2.THRESH_BINARY_INV, 11, 2)
-    # virer les bords
+BLANK_CONTRAST = 40  # vides mesurés <= 2, chiffres >= 206 (sudoku2/3.png)
+
+def is_blank_cell(gray: np.ndarray, contrast_min: float = BLANK_CONTRAST) -> bool:
+    """Case vide si son centre est quasi uniforme (fond blanc ou grisé).
+
+    Contraste = écart entre percentiles 2 et 98 du centre de la case, robuste au
+    bruit et insensible au fond grisé, contrairement au seuillage adaptatif qui y
+    fait apparaître des bords.
+    """
+    h, w = gray.shape[:2]
+    center = gray[h // 4:3 * h // 4, w // 4:3 * w // 4]
+    if center.size == 0:
+        return True
+    lo, hi = np.percentile(center, (2, 98))
+    return float(hi - lo) < contrast_min
+
+def digit_from_binary(thr: np.ndarray) -> np.ndarray | None:
+    """Choisit la composante "chiffre" d'une case binarisée (encre blanche sur noir).
+
+    Retourne une image 28x28 (digit blanc sur noir) ou None si la case est vide.
+    Rejette les fragments de lignes de grille et les bords de zones grisées :
+    composantes trop fines, trop petites, traversant la case ou décentrées.
+    """
+    thr = thr.copy()
     h, w = thr.shape
     margin = max(2, h // 14)
     thr[:margin, :] = 0; thr[-margin:, :] = 0
     thr[:, :margin] = 0; thr[:, -margin:] = 0
 
-    # petit nettoyage
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
-    thr = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel, iterations=1)
-
     num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(thr, 8)
-    if num_labels <= 1:
+    best, best_dist = None, None
+    for i in range(1, num_labels):
+        x, y, w2, h2, area = stats[i]
+        if not (max(25, 0.007 * h * w) <= area <= 0.5 * h * w):
+            continue
+        if h2 < 0.3 * h:                  # trop petit : bruit, point
+            continue
+        if h2 > 0.9 * h or w2 > 0.8 * w:  # traverse la case : ligne ou bord de zone grisée
+            continue
+        if area / h2 < max(2.0, 0.04 * w):  # trait trop fin : fragment de ligne
+            continue
+        dx = (x + w2 / 2) - w / 2
+        dy = (y + h2 / 2) - h / 2
+        if abs(dx) > 0.25 * w or abs(dy) > 0.25 * h:  # décentré : collé à un bord
+            continue
+        dist = dx * dx + dy * dy
+        if best is None or dist < best_dist:
+            best, best_dist = i, dist
+    if best is None:
         return None
 
-    # plus grande composante plausible (évite l’ombre/gris de fond)
-    areas = stats[1:, cv2.CC_STAT_AREA]
-    max_idx = 1 + np.argmax(areas)
-    area = int(areas.max())
-    cell_area = h * w
-    if not (max(40, int(0.007 * cell_area)) <= area <= int(0.5 * cell_area)):
-        return None
-
-    x, y, w2, h2, _ = stats[max_idx]
-    roi = (labels == max_idx).astype(np.uint8) * 255
+    x, y, w2, h2, _ = stats[best]
+    roi = (labels == best).astype(np.uint8) * 255
     roi = roi[y:y + h2, x:x + w2]
 
     side = max(h2, w2) + 8
@@ -106,5 +130,16 @@ def extract_digit(cell: np.ndarray) -> np.ndarray | None:
     x_off = (side - w2) // 2
     canvas[y_off:y_off + h2, x_off:x_off + w2] = roi
 
-    digit28 = cv2.resize(canvas, (28, 28), interpolation=cv2.INTER_AREA)
-    return digit28
+    return cv2.resize(canvas, (28, 28), interpolation=cv2.INTER_AREA)
+
+def extract_digit(cell: np.ndarray) -> np.ndarray | None:
+    """Retourne une image 28x28 (digit blanc sur noir) ou None si case vide."""
+    gray = cv2.cvtColor(cell, cv2.COLOR_BGR2GRAY)
+    if is_blank_cell(gray):
+        return None
+    thr = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                cv2.THRESH_BINARY_INV, 11, 2)
+    # petit nettoyage
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+    thr = cv2.morphologyEx(thr, cv2.MORPH_CLOSE, kernel, iterations=1)
+    return digit_from_binary(thr)

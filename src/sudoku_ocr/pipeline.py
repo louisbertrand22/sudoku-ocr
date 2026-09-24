@@ -6,7 +6,7 @@ import numpy as np
 
 from .detect import find_sudoku_quad
 from .geometry import four_point_transform
-from .cells import detect_grid_lines, split_cells_by_lines, extract_digit
+from .cells import detect_grid_lines, split_cells_by_lines, extract_digit, digit_from_binary, is_blank_cell
 from .solver import solve, is_valid
 from .overlay import overlay_solution
 
@@ -51,6 +51,8 @@ def _ocr_cell_multi(cell_bgr, ocr) -> int:
     """
     import cv2, numpy as np
     gray = cv2.cvtColor(cell_bgr, cv2.COLOR_BGR2GRAY)
+    if is_blank_cell(gray):
+        return 0
     thrs = [
         cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
                               cv2.THRESH_BINARY_INV, 11, 2),
@@ -60,25 +62,10 @@ def _ocr_cell_multi(cell_bgr, ocr) -> int:
     ]
     preds, confs = [], []
     for t in thrs:
-        h, w = t.shape
-        m = max(2, h // 14)
-        t[:m, :] = 0; t[-m:, :] = 0; t[:, :m] = 0; t[:, -m:] = 0
-        # plus grande CC
-        n, lab, stats, _ = cv2.connectedComponentsWithStats(t, 8)
-        if n <= 1:  # vide
+        # mêmes critères de case vide que extract_digit
+        digit28 = digit_from_binary(t)
+        if digit28 is None:
             preds.append(0); confs.append(0.0); continue
-        areas = stats[1:, cv2.CC_STAT_AREA]
-        max_idx = 1 + np.argmax(areas)
-        x, y, w2, h2, _ = stats[max_idx]
-        if areas.max() < max(25, int(0.007 * h * w)):
-            preds.append(0); confs.append(0.0); continue
-        roi = (lab == max_idx).astype(np.uint8) * 255
-        roi = roi[y:y+h2, x:x+w2]
-        side = max(h2, w2) + 8
-        canvas = np.zeros((side, side), np.uint8)
-        yo = (side - h2) // 2; xo = (side - w2) // 2
-        canvas[yo:yo+h2, xo:xo+w2] = roi
-        digit28 = cv2.resize(canvas, (28, 28), interpolation=cv2.INTER_AREA)
 
         # prédiction
         try:
