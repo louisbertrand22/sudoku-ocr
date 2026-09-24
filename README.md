@@ -88,7 +88,8 @@ et la validité des solutions.
 3. **Cases vides** : contraste du centre de la case, puis filtrage des composantes
    (fragments de lignes, bords de zones grisées).
 4. **OCR** (`ocr/`) : CNN Keras, vote sur plusieurs binarisations en cas de doute,
-   repli sur Tesseract si la grille ne se résout pas.
+   repli sur Tesseract si la grille ne se résout pas. Architecture, paramètres et
+   métriques du réseau : [docs/reseau_de_neurones.md](docs/reseau_de_neurones.md).
 5. **Résolution** (`solver.py`) : backtracking, case la plus contrainte d'abord.
 6. **Réincrustation** (`overlay.py`) de la solution sur l'image d'origine.
 
@@ -96,6 +97,7 @@ et la validité des solutions.
 
 ```
 configs/default.yaml       configuration par défaut
+docs/                      documentation (réseau de neurones)
 data/assets/               chiffres 1..9 pour l'entraînement (<chiffre>_<id>.jpg)
 data/assets_zero_backup/   cases vides (classe 0), écartées de l'entraînement
 data/assets_trash/         images rejetées (floues / peu contrastées)
