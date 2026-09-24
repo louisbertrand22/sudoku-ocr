@@ -51,7 +51,6 @@ def _ocr_cell_multi(cell_bgr, ocr) -> int:
     OCR robuste d'une case : on génère 3 binarisations différentes et on prend
     la meilleure (ou un vote si égalité). Retourne 0 si incertain.
     """
-    import cv2, numpy as np
     gray = cv2.cvtColor(cell_bgr, cv2.COLOR_BGR2GRAY)
     if is_blank_cell(gray):
         return 0

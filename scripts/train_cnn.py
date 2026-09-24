@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# scripts/train_from_folder.py
+# scripts/train_cnn.py
 import os, glob, sys
 import numpy as np
 import tensorflow as tf

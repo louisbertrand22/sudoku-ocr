@@ -1,7 +1,2 @@
-opencv-python
-numpy
-pillow
-tensorflow
-pytesseract
-pyyaml
-rich
+# Les dépendances sont déclarées dans pyproject.toml
+-e .[tesseract,train,dev]

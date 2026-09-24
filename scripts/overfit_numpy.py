@@ -20,7 +20,7 @@ def load_pairs(root, n=128, seed=0, invert_mode="fixed"):
         if im is None: continue
         im = cv2.resize(im, (IMG, IMG), interpolation=cv2.INTER_AREA)
         im = im.astype(np.float32) / 255.0
-        # prétraitement identique à train_from_folder: blur léger + inversion + "binarisation douce"
+        # prétraitement proche de train_cnn: blur léger + inversion + "binarisation douce"
         im = cv2.blur(im, (3,3))
         if invert_mode == "fixed":
             im = 1.0 - im

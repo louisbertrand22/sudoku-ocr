@@ -9,6 +9,7 @@ from sudoku_ocr.detect import find_sudoku_quad
 from sudoku_ocr.geometry import _order_quad, four_point_transform
 
 ROOT = Path(__file__).resolve().parent.parent
+SAMPLES = ROOT / "data" / "samples"
 
 
 def _draw_grid(img, x0, y0, size):
@@ -49,7 +50,7 @@ def test_grid_score_separates_grid_from_blank():
 
 @pytest.mark.parametrize("name", ["sudoku2.png", "sudoku3.png", "sudoku4.png"])
 def test_sample_images_give_regular_grid(name):
-    img = cv2.imread(str(ROOT / name))
+    img = cv2.imread(str(SAMPLES / name))
     quad = find_sudoku_quad(img)
     warped, _, _ = four_point_transform(img, quad, size=450)
     xs, ys = detect_grid_lines(warped)
@@ -59,6 +60,6 @@ def test_sample_images_give_regular_grid(name):
 
 
 def test_sudoku4_ignores_image_border():
-    img = cv2.imread(str(ROOT / "sudoku4.png"))
+    img = cv2.imread(str(SAMPLES / "sudoku4.png"))
     quad = find_sudoku_quad(img)
     _assert_corners(quad, [[133, 120], [2319, 120], [2319, 2306], [133, 2306]], tol=15)

@@ -1,19 +1,30 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "sudoku-ocr"
 version = "0.1.0"
-requires-python = ">=3.10"
+description = "Détecte, lit (OCR) et résout une grille de sudoku dans une image."
+readme = "README.md"
+requires-python = ">=3.10,<3.14"  # TensorFlow n'est pas publié pour Python 3.14
 dependencies = [
   "opencv-python",
   "numpy",
-  "pillow",
-  "tensorflow>=2.12; platform_system != 'Darwin' or platform_machine != 'arm64'",
-  "pytesseract; extra == 'tesseract'",
+  "tensorflow>=2.12",
   "pyyaml",
-  "rich"
 ]
+
+[project.optional-dependencies]
+tesseract = ["pytesseract"]        # + binaire tesseract installé sur le système
+train = ["scikit-learn"]           # scripts/train_cnn.py
+dev = ["pytest"]
 
 [project.scripts]
 sudoku-ocr = "sudoku_ocr.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

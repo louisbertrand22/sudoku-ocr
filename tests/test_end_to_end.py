@@ -21,6 +21,7 @@ from sudoku_ocr.solver import solved_ok
 pytestmark = pytest.mark.e2e
 
 ROOT = Path(__file__).resolve().parent.parent
+SAMPLES = ROOT / "data" / "samples"
 WEIGHTS = Path(os.environ.get("SUDOKU_OCR_WEIGHTS", ROOT / "models" / "sudoku_cnn.keras"))
 
 # Grilles attendues, ligne par ligne (0 = case vide)
@@ -58,7 +59,7 @@ def ocr(cfg):
 
 @pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_reads_every_given_digit(name, cfg, ocr):
-    img = cv2.imread(str(ROOT / name))
+    img = cv2.imread(str(SAMPLES / name))
     grid = read_grid(img, cfg, ocr).grid
     want = _expected(name)
     assert np.array_equal(grid, want), f"{name} :\n{_describe_diff(grid, want)}"
@@ -67,7 +68,7 @@ def test_reads_every_given_digit(name, cfg, ocr):
 @pytest.mark.parametrize("name", sorted(EXPECTED))
 def test_run_writes_a_valid_solution(name, cfg, ocr, tmp_path):
     out = tmp_path / f"result_{name}"
-    res = run(str(ROOT / name), str(out), cfg, ocr=ocr)
+    res = run(str(SAMPLES / name), str(out), cfg, ocr=ocr)
 
     solution = np.array(res["solution"])
     want = _expected(name)
@@ -76,12 +77,12 @@ def test_run_writes_a_valid_solution(name, cfg, ocr, tmp_path):
 
     written = cv2.imread(str(out))
     assert written is not None
-    assert written.shape == cv2.imread(str(ROOT / name)).shape
+    assert written.shape == cv2.imread(str(SAMPLES / name)).shape
 
 
 def test_cli_solves_sample(cfg, tmp_path, capsys):
     out = tmp_path / "cli.jpg"
-    code = cli.main(["--image", str(ROOT / "sudoku4.png"), "--weights", cfg["ocr"]["cnn_weights"],
+    code = cli.main(["--image", str(SAMPLES / "sudoku4.png"), "--weights", cfg["ocr"]["cnn_weights"],
                      "--out", str(out)])
     assert code == 0, capsys.readouterr().err
     assert out.exists()

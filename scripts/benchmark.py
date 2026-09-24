@@ -1,1 +1,0 @@
-print('benchmark stub')

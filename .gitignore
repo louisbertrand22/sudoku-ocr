@@ -56,6 +56,7 @@ data_outputs/
 models/*.h5
 models/*.hdf5
 models/*.keras
+models/*.meta.json
 models/*.ckpt
 models/*.tflite
 models/*.onnx
