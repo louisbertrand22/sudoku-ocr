@@ -1,6 +1,7 @@
 from __future__ import annotations
 import os
-from typing import Dict, Tuple
+from dataclasses import dataclass
+from typing import Dict
 import cv2
 import numpy as np
 
@@ -112,68 +113,42 @@ def _make_ocr_backend(name: str, cfg: Dict):
         raise ValueError(f"OCR backend inconnu: {name}")
 
 
-def _to_grid_and_mask(cells_bgr: list[np.ndarray], ocr) -> Tuple[np.ndarray, np.ndarray]:
-    """OCR sur 81 cellules → retourne (grid 9x9, given_mask 9x9 bool)."""
-    grid = np.zeros((9, 9), dtype=int)
-    given = np.zeros((9, 9), dtype=bool)
-    for idx, cell in enumerate(cells_bgr):
-        r, c = divmod(idx, 9)
-        dimg = extract_digit(cell)
-        if dimg is None:
-            continue
-        val = int(ocr.predict_digit(dimg))
-        if 1 <= val <= 9:
-            grid[r, c] = val
-            given[r, c] = True
-    return grid, given
+@dataclass
+class GridReading:
+    """Résultat de la lecture d'une image (avant nettoyage et résolution)."""
+    grid: np.ndarray        # 9x9 int, chiffres lus (0 = vide ou illisible)
+    given: np.ndarray       # 9x9 bool, cases où de l'encre a été détectée
+    cells: list             # 81 images BGR des cases, ordre ligne par ligne
+    xs: list[int]           # positions des lignes dans l'image redressée
+    ys: list[int]
+    Minv: np.ndarray        # homographie image redressée -> image d'origine
+    warp_size: int
 
 
-def run(image_path: str, out_path: str, cfg: Dict):
+def read_grid(img: np.ndarray, cfg: Dict | None = None, ocr=None) -> GridReading:
+    """Détecte la grille, découpe les 81 cases et lit les chiffres.
+
+    `ocr` permet de réutiliser un backend déjà chargé ; sinon il est créé
+    d'après cfg["ocr"]. Lève RuntimeError si aucune grille n'est trouvée.
     """
-    Pipeline de bout en bout :
-      1) Détection de la grille et rectification (450x450)
-      2) Découpe en 81 cases + extraction chiffre
-      3) OCR via backend (cnn/tesseract)
-      4) Résolution Sudoku (backtracking)
-      5) Réincrustation de la solution sur l'image originale
-    """
-    cfg = load_config(overrides=cfg)  # complète avec les défauts et valide
-    if not os.path.exists(image_path):
-        raise FileNotFoundError(image_path)
-
-    # Chargement image
-    img = cv2.imread(image_path)
-    if img is None:
-        raise RuntimeError(f"Impossible de lire l'image: {image_path}")
-    print(f" Image chargée: {image_path} ({img.shape[1]}x{img.shape[0]})")
+    cfg = load_config(overrides=cfg)
 
     # 1) Détection
     quad = find_sudoku_quad(img)
     if quad is None:
         raise RuntimeError("Grille Sudoku introuvable dans l'image.")
-    print(" Grille détectée.")
 
-    # 2) Rectification
-    warp_size = int(cfg.get("detect", {}).get("warp_size", 450))
-    warped, M, Minv = four_point_transform(img, quad, size=warp_size)
-
-    # lignes & découpe précise
+    # 2) Rectification, lignes & découpe précise
+    warp_size = int(cfg["detect"]["warp_size"])
+    warped, _, Minv = four_point_transform(img, quad, size=warp_size)
     xs, ys = detect_grid_lines(warped)
     cells = split_cells_by_lines(warped, xs, ys)
 
-    # OCR + given mask basé sur présence d’encre, pas sur l’OCR
+    # 3) OCR ; given_mask basé sur la présence d'encre, pas sur l'OCR
+    if ocr is None:
+        ocr = _make_ocr_backend(cfg["ocr"]["backend"], cfg)
     grid = np.zeros((9, 9), dtype=int)
     given = np.zeros((9, 9), dtype=bool)
-    backend = cfg.get("ocr", {}).get("backend", "cnn")
-    ocr = _make_ocr_backend(backend, cfg)
-
-    grid = np.zeros((9, 9), dtype=int)
-
-    # IMPORTANT : given_mask basé sur présence d'encre, pas sur l'OCR
-    given = np.zeros((9, 9), dtype=bool)
-
-    from .cells import extract_digit  # si ce n'est pas déjà importé en haut
-
     for idx, cell in enumerate(cells):
         r, c = divmod(idx, 9)
         dimg = extract_digit(cell)
@@ -188,6 +163,33 @@ def run(image_path: str, out_path: str, cfg: Dict):
         v = int(ocr.predict_digit(dimg))
         if 1 <= v <= 9:
             grid[r, c] = v
+
+    return GridReading(grid, given, cells, xs, ys, Minv, warp_size)
+
+
+def run(image_path: str, out_path: str, cfg: Dict | None = None, ocr=None):
+    """
+    Pipeline de bout en bout :
+      1) Détection de la grille et rectification (450x450)
+      2) Découpe en 81 cases + extraction chiffre
+      3) OCR via backend (cnn/tesseract), ou `ocr` déjà chargé
+      4) Résolution Sudoku (backtracking)
+      5) Réincrustation de la solution sur l'image originale
+    """
+    cfg = load_config(overrides=cfg)  # complète avec les défauts et valide
+    if not os.path.exists(image_path):
+        raise FileNotFoundError(image_path)
+
+    # Chargement image
+    img = cv2.imread(image_path)
+    if img is None:
+        raise RuntimeError(f"Impossible de lire l'image: {image_path}")
+    print(f" Image chargée: {image_path} ({img.shape[1]}x{img.shape[0]})")
+
+    reading = read_grid(img, cfg, ocr)
+    grid, given, cells = reading.grid.copy(), reading.given, reading.cells
+    xs, ys, Minv, warp_size = reading.xs, reading.ys, reading.Minv, reading.warp_size
+    backend = cfg["ocr"]["backend"]
 
     print("OCR effectué avec backend '%s'." % backend)
     print("Grille reconnue (avant nettoyage):")
@@ -249,4 +251,6 @@ def run(image_path: str, out_path: str, cfg: Dict):
         "out": out_path,
         "backend": backend,
         "given": int(np.sum(given)),
+        "grid": reading.grid.tolist(),   # chiffres lus, avant nettoyage
+        "solution": solved.tolist(),
     }
