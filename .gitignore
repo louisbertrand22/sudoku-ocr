@@ -63,6 +63,9 @@ models/*.onnx
 models/*.pb
 models/checkpoints/
 !models/.gitkeep
+# modèle servi par l'interface déployée (Streamlit Cloud)
+!models/sudoku_cnn.keras
+!models/sudoku_cnn.meta.json
 
 # ---- Logs / debug ----
 logs/

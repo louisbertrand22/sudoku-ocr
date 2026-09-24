@@ -1,2 +1,3 @@
-# Les dépendances sont déclarées dans pyproject.toml
--e .[tesseract,train,ui,dev]
+# Installation pour Streamlit Cloud (interface seule).
+# En local : make install (ajoute tesseract, train, dev). Dépendances : pyproject.toml
+-e .[ui]

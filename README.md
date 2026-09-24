@@ -16,7 +16,7 @@ L'extra `tesseract` demande aussi le binaire `tesseract` installé sur le systè
 
 ## Modèle
 
-Le modèle n'est pas versionné. Pour l'entraîner sur `data/assets` (~30 s sur CPU) :
+Un modèle entraîné est versionné (`models/sudoku_cnn.keras`). Pour le réentraîner sur `data/assets` (~30 s sur CPU) :
 
 ```bash
 make train                 # -> models/sudoku_cnn.keras + models/sudoku_cnn.meta.json
@@ -58,6 +58,13 @@ Choisir une image d'exemple ou importer une photo, puis :
    télécharge en PNG.
 
 La barre latérale reprend `configs/default.yaml` (modèle, confiance, affichage).
+
+## Déploiement (Streamlit Community Cloud)
+
+Sur https://share.streamlit.io : *Create app* → dépôt `louisbertrand22/sudoku-ocr`,
+branche `main`, fichier `src/sudoku_ocr/ui/app.py`, et dans *Advanced settings*
+Python **3.12**. `requirements.txt` n'installe que l'extra `ui` ; le modèle
+`models/sudoku_cnn.keras` est versionné pour être servi.
 
 ## Tests
 

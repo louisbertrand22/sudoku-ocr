@@ -19,6 +19,12 @@ from sudoku_ocr.ui.helpers import (
     frame_to_grid, grid_to_frame, hex_to_bgr, to_rgb,
 )
 
+# chemins relatifs (configs/, models/, data/samples/) résolus depuis la racine du
+# dépôt, quel que soit le dossier de lancement (Streamlit Cloud, autre dossier)
+REPO_ROOT = Path(__file__).resolve().parents[3]
+if (REPO_ROOT / "configs").is_dir():
+    os.chdir(REPO_ROOT)
+
 SAMPLES_DIR = Path("data/samples")
 SHOW_MODES = {"all": "Tout", "new": "Chiffres trouvés", "givens_only": "Chiffres de départ"}
 
