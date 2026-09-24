@@ -1,12 +1,53 @@
-def main():
-    import argparse
+import argparse
+import os
+import sys
+
+from .config import DEFAULT_CONFIG_PATH, load_config
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        prog="sudoku-ocr",
+        description="Détecte, lit et résout une grille de sudoku dans une image.",
+    )
+    parser.add_argument('--image', required=True, help="image d'entrée")
+    parser.add_argument('--out', default='data/outputs/result.jpg', help="image de sortie")
+    parser.add_argument('--config', default=None,
+                        help=f"fichier YAML (défaut : {DEFAULT_CONFIG_PATH} s'il existe)")
+    parser.add_argument('--backend', choices=['cnn', 'tesseract'], default=None,
+                        help="surcharge ocr.backend")
+    parser.add_argument('--weights', default=None, help="surcharge ocr.cnn_weights")
+    return parser
+
+
+def config_from_args(args: argparse.Namespace) -> dict:
+    path = args.config
+    if path is None and os.path.exists(DEFAULT_CONFIG_PATH):
+        path = DEFAULT_CONFIG_PATH
+    ocr = {}
+    if args.backend is not None:
+        ocr["backend"] = args.backend
+    if args.weights is not None:
+        ocr["cnn_weights"] = args.weights
+    return load_config(path, {"ocr": ocr} if ocr else None)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    try:
+        cfg = config_from_args(args)
+    except (FileNotFoundError, ValueError) as e:
+        parser.error(str(e))
+
     from .pipeline import run
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--image', required=True)
-    parser.add_argument('--out', default='data/outputs/result.jpg')
-    parser.add_argument('--backend', choices=['cnn','tesseract'], default='cnn')
-    args = parser.parse_args()
-    run(args.image, args.out, {'ocr': {'backend': args.backend}})
+    try:
+        run(args.image, args.out, cfg)
+    except (FileNotFoundError, RuntimeError) as e:
+        print(f"Erreur : {e}", file=sys.stderr)
+        return 1
+    return 0
+
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main())

@@ -9,6 +9,7 @@ from .geometry import four_point_transform
 from .cells import detect_grid_lines, split_cells_by_lines, extract_digit, digit_from_binary, is_blank_cell
 from .solver import solve, is_valid
 from .overlay import overlay_solution
+from .config import DEFAULTS, load_config
 
 # OCR backends (importés paresseusement pour éviter les deps inutiles)
 
@@ -97,7 +98,7 @@ def _make_ocr_backend(name: str, cfg: Dict):
     name = (name or "cnn").lower()
     if name == "cnn":
         from .ocr.cnn import CNNOCR
-        mnist_weights = "models/mnist_cnn.keras"
+        mnist_weights = DEFAULTS["ocr"]["cnn_weights"]
         weights = cfg.get("ocr", {}).get("cnn_weights", mnist_weights)
         conf = cfg.get("predict", {}).get("conf_min", 0.6)
         # entraînement MNIST automatique uniquement pour le modèle MNIST : un modèle
@@ -136,6 +137,7 @@ def run(image_path: str, out_path: str, cfg: Dict):
       4) Résolution Sudoku (backtracking)
       5) Réincrustation de la solution sur l'image originale
     """
+    cfg = load_config(overrides=cfg)  # complète avec les défauts et valide
     if not os.path.exists(image_path):
         raise FileNotFoundError(image_path)
 
@@ -226,8 +228,13 @@ def run(image_path: str, out_path: str, cfg: Dict):
     if not ok:
         raise RuntimeError("Le sudoku n'a pas pu être résolu.")
 
+    ov = cfg["overlay"]
     result = overlay_solution(img, Minv, solved, given,
-                              warp_size=warp_size, xs=xs, ys=ys, show_mode="all")
+                              color=tuple(int(v) for v in ov["color"]),
+                              given_color=tuple(int(v) for v in ov["given_color"]),
+                              scale=float(ov["scale"]), thickness=int(ov["thickness"]),
+                              warp_size=warp_size, xs=xs, ys=ys, show_mode=ov["show_mode"])
+    os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     ok = cv2.imwrite(out_path, result)
     if not ok:
         raise RuntimeError(f"Échec d'écriture du fichier de sortie: {out_path}")

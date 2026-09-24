@@ -1,16 +1,15 @@
+# Clés acceptées et valeurs par défaut : src/sudoku_ocr/config.py (DEFAULTS)
 ocr:
   backend: "cnn"           # "tesseract" possible
-  # cnn_weights: "models/mnist_cnn.keras"
-  cnn_weights: "models/sudoku_cnn.keras"  # alternative weights
+  # cnn_weights: "models/mnist_cnn.keras"  # entraîné automatiquement sur MNIST si absent
+  cnn_weights: "models/sudoku_cnn.keras"   # produit par scripts/train_cnn.py (+ .meta.json)
 detect:
   warp_size: 450
-  thresh_block: 11
-  thresh_C: 2
-cells:
-  min_area: 30
 predict:
   conf_min: 0.6
 overlay:
-  color: [255, 255, 255]
+  color: [255, 255, 255]         # BGR des chiffres trouvés
+  given_color: [120, 120, 120]   # BGR des chiffres de départ
   scale: 1.2
   thickness: 2
+  show_mode: "all"               # "all" | "new" (chiffres trouvés seuls) | "givens_only"
