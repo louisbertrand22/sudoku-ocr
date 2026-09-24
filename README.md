@@ -81,6 +81,8 @@ et la validité des solutions.
 
 1. **Détection** (`detect.py`) : contours de l'image, chaque quadrilatère candidat est
    noté par sa ressemblance à une grille 9×9 une fois redressé (`cells.grid_score`).
+   Le mode sombre (chiffres clairs sur fond foncé) est géré : la détection est faite
+   sur l'image et sur son inverse, et la version dont la grille a un fond clair est lue.
 2. **Redressement** (`geometry.py`) en carré 450×450, puis détection des lignes et
    découpe des 81 cases (`cells.py`).
 3. **Cases vides** : contraste du centre de la case, puis filtrage des composantes
@@ -97,7 +99,7 @@ configs/default.yaml       configuration par défaut
 data/assets/               chiffres 1..9 pour l'entraînement (<chiffre>_<id>.jpg)
 data/assets_zero_backup/   cases vides (classe 0), écartées de l'entraînement
 data/assets_trash/         images rejetées (floues / peu contrastées)
-data/samples/              images de grilles d'exemple (tests e2e)
+data/samples/              grilles d'exemple, dont *_dark.png en mode sombre (tests e2e)
 scripts/                   entraînement et outils sur le dataset
 src/sudoku_ocr/            le paquet (ui/ : interface Streamlit)
 tests/

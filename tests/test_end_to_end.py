@@ -30,6 +30,8 @@ EXPECTED = {
     "sudoku3.png": "543070619102069703607000004250080970074205800801006540708641300305928467400037120",
     "sudoku4.png": "205308409070000050904000607500040002000507000600030008406000801020000060801209704",
 }
+# mode sombre : mêmes grilles en chiffres clairs sur fond foncé
+EXPECTED.update({name.replace(".png", "_dark.png"): grid for name, grid in list(EXPECTED.items())})
 
 
 def _expected(name: str) -> np.ndarray:

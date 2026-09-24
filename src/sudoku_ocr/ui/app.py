@@ -168,6 +168,8 @@ def main() -> None:
             st.rerun()
     with col_view:
         tab_read, tab_detect = st.tabs(["Lecture", "Détection"])
+        if reading.inverted:
+            tab_read.caption("Mode sombre détecté : chiffres clairs sur fond foncé.")
         tab_read.image(to_rgb(draw_reading(reading.warped, reading.xs, reading.ys, grid, conflicts)),
                        caption="Grille redressée, lignes et chiffres retenus", width="stretch")
         tab_detect.image(to_rgb(draw_detection(img, reading.quad)),

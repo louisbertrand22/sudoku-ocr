@@ -16,7 +16,7 @@ from sudoku_ocr.ui.helpers import (
 
 ROOT = Path(__file__).resolve().parent.parent
 APP = str(ROOT / "src" / "sudoku_ocr" / "ui" / "app.py")
-SAMPLES = ["sudoku2.png", "sudoku3.png", "sudoku4.png"]
+SAMPLES = ["sudoku2.png", "sudoku3.png", "sudoku4.png", "sudoku3_dark.png"]
 WEIGHTS = Path(os.environ.get("SUDOKU_OCR_WEIGHTS", ROOT / "models" / "sudoku_cnn.keras"))
 PUZZLE4 = "205308409070000050904000607500040002000507000600030008406000801020000060801209704"
 

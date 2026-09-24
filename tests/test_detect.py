@@ -63,3 +63,21 @@ def test_sudoku4_ignores_image_border():
     img = cv2.imread(str(SAMPLES / "sudoku4.png"))
     quad = find_sudoku_quad(img)
     _assert_corners(quad, [[133, 120], [2319, 120], [2319, 2306], [133, 2306]], tol=15)
+
+
+class _NoOCR:
+    """OCR factice : la polarité se décide avant toute lecture de chiffre."""
+    def predict_digit(self, img28):
+        return 0
+
+
+@pytest.mark.parametrize("name", ["sudoku2.png", "sudoku3.png", "sudoku4.png",
+                                  "sudoku2_dark.png", "sudoku3_dark.png", "sudoku4_dark.png"])
+def test_read_grid_picks_polarity(name):
+    from sudoku_ocr.pipeline import read_grid
+    img = cv2.imread(str(SAMPLES / name))
+    reading = read_grid(img, None, ocr=_NoOCR())
+    assert reading.inverted == name.endswith("_dark.png")
+    # la grille affichée garde la polarité d'origine
+    median = np.median(cv2.cvtColor(reading.warped, cv2.COLOR_BGR2GRAY))
+    assert (median < 128) == reading.inverted

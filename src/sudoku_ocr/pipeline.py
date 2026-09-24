@@ -7,7 +7,8 @@ import numpy as np
 
 from .detect import find_sudoku_quad
 from .geometry import four_point_transform
-from .cells import detect_grid_lines, split_cells_by_lines, extract_digit, digit_from_binary, is_blank_cell
+from .cells import (detect_grid_lines, split_cells_by_lines, extract_digit, digit_from_binary,
+                    is_blank_cell, grid_score)
 from .solver import solve, is_valid
 from .overlay import overlay_solution
 from .config import DEFAULTS, load_config
@@ -123,7 +124,8 @@ class GridReading:
     Minv: np.ndarray        # homographie image redressée -> image d'origine
     warp_size: int
     quad: np.ndarray        # 4 coins de la grille dans l'image d'origine
-    warped: np.ndarray      # grille redressée (warp_size x warp_size, BGR)
+    warped: np.ndarray      # grille redressée (warp_size x warp_size, BGR), polarité d'origine
+    inverted: bool = False  # True si lue sur l'image inversée (mode sombre)
 
 
 def read_grid(img: np.ndarray, cfg: Dict | None = None, ocr=None) -> GridReading:
@@ -133,15 +135,26 @@ def read_grid(img: np.ndarray, cfg: Dict | None = None, ocr=None) -> GridReading
     d'après cfg["ocr"]. Lève RuntimeError si aucune grille n'est trouvée.
     """
     cfg = load_config(overrides=cfg)
-
-    # 1) Détection
-    quad = find_sudoku_quad(img)
-    if quad is None:
-        raise RuntimeError("Grille Sudoku introuvable dans l'image.")
-
-    # 2) Rectification, lignes & découpe précise
     warp_size = int(cfg["detect"]["warp_size"])
-    warped, _, Minv = four_point_transform(img, quad, size=warp_size)
+
+    # 1) Détection + 2) rectification, sur l'image et sur son inverse : tout le
+    # traitement attend de l'encre foncée sur fond clair ; en mode sombre
+    # (chiffres clairs sur fond foncé) seule l'image inversée donne une grille
+    candidates = []  # (score, inverted, quad, warped, Minv)
+    for inverted, candidate in ((False, img), (True, cv2.bitwise_not(img))):
+        quad = find_sudoku_quad(candidate)
+        if quad is None:
+            continue
+        warped, _, Minv = four_point_transform(candidate, quad, size=warp_size)
+        # une grille est surtout faite de cases vides : sa médiane donne le fond
+        light_bg = float(np.median(cv2.cvtColor(warped, cv2.COLOR_BGR2GRAY))) >= 128
+        candidates.append((light_bg, grid_score(warped), not inverted, inverted, quad, warped, Minv))
+    if not candidates:
+        raise RuntimeError("Grille Sudoku introuvable dans l'image.")
+    # fond clair d'abord, puis ressemblance à une grille, puis image d'origine
+    candidates.sort(key=lambda c: c[:3], reverse=True)
+    _, _, _, inverted, quad, warped, Minv = candidates[0]
+
     xs, ys = detect_grid_lines(warped)
     cells = split_cells_by_lines(warped, xs, ys)
 
@@ -165,7 +178,8 @@ def read_grid(img: np.ndarray, cfg: Dict | None = None, ocr=None) -> GridReading
         if 1 <= v <= 9:
             grid[r, c] = v
 
-    return GridReading(grid, given, cells, xs, ys, Minv, warp_size, quad, warped)
+    display = cv2.bitwise_not(warped) if inverted else warped
+    return GridReading(grid, given, cells, xs, ys, Minv, warp_size, quad, display, inverted)
 
 
 def render_solution(img: np.ndarray, reading: GridReading, solved: np.ndarray,
