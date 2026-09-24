@@ -88,3 +88,55 @@ def solved_ok(grid: Grid) -> bool:
             if set(grid[br:br+3, bc:bc+3].ravel()) != target:
                 return False
     return True
+
+
+def find_conflicts(grid: Grid) -> list[Tuple[int, int]]:
+    """Cases (r, c) dont la valeur est répétée dans sa ligne, sa colonne ou sa boîte."""
+    conflicts = set()
+    units = [[(r, c) for c in range(9)] for r in range(9)]
+    units += [[(r, c) for r in range(9)] for c in range(9)]
+    units += [[(br + i, bc + j) for i in range(3) for j in range(3)]
+              for br in range(0, 9, 3) for bc in range(0, 9, 3)]
+    for unit in units:
+        seen: dict[int, list[Tuple[int, int]]] = {}
+        for r, c in unit:
+            v = int(grid[r, c])
+            if v:
+                seen.setdefault(v, []).append((r, c))
+        for cells in seen.values():
+            if len(cells) > 1:
+                conflicts.update(cells)
+    return sorted(conflicts)
+
+
+def count_solutions(grid: Grid, limit: int = 2) -> int:
+    """Nombre de solutions, plafonné à `limit` (2 suffit pour tester l'unicité).
+
+    Ne modifie pas `grid`. Une grille avec des conflits a 0 solution.
+    """
+    if find_conflicts(grid):
+        return 0
+    work = np.array(grid, dtype=int, copy=True)
+
+    def _count() -> int:
+        empties = [(r, c) for r in range(9) for c in range(9) if work[r, c] == 0]
+        if not empties:
+            return 1
+        best = None
+        for r, c in empties:
+            cand = _candidates(work, r, c)
+            if not cand:
+                return 0
+            if best is None or len(cand) < len(best[2]):
+                best = (r, c, cand)
+        r, c, cand = best
+        total = 0
+        for v in cand:
+            work[r, c] = v
+            total += _count()
+            work[r, c] = 0
+            if total >= limit:
+                break
+        return total
+
+    return min(_count(), limit)

@@ -1,2 +1,2 @@
 # Les dépendances sont déclarées dans pyproject.toml
--e .[tesseract,train,dev]
+-e .[tesseract,train,ui,dev]

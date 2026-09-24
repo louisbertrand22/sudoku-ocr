@@ -122,6 +122,8 @@ class GridReading:
     ys: list[int]
     Minv: np.ndarray        # homographie image redressée -> image d'origine
     warp_size: int
+    quad: np.ndarray        # 4 coins de la grille dans l'image d'origine
+    warped: np.ndarray      # grille redressée (warp_size x warp_size, BGR)
 
 
 def read_grid(img: np.ndarray, cfg: Dict | None = None, ocr=None) -> GridReading:
@@ -163,7 +165,19 @@ def read_grid(img: np.ndarray, cfg: Dict | None = None, ocr=None) -> GridReading
         if 1 <= v <= 9:
             grid[r, c] = v
 
-    return GridReading(grid, given, cells, xs, ys, Minv, warp_size)
+    return GridReading(grid, given, cells, xs, ys, Minv, warp_size, quad, warped)
+
+
+def render_solution(img: np.ndarray, reading: GridReading, solved: np.ndarray,
+                    given: np.ndarray, cfg: Dict | None = None) -> np.ndarray:
+    """Réincruste `solved` sur l'image d'origine selon cfg["overlay"]."""
+    ov = load_config(overrides=cfg)["overlay"]
+    return overlay_solution(img, reading.Minv, solved, given,
+                            color=tuple(int(v) for v in ov["color"]),
+                            given_color=tuple(int(v) for v in ov["given_color"]),
+                            scale=float(ov["scale"]), thickness=int(ov["thickness"]),
+                            warp_size=reading.warp_size, xs=reading.xs, ys=reading.ys,
+                            show_mode=ov["show_mode"])
 
 
 def run(image_path: str, out_path: str, cfg: Dict | None = None, ocr=None):
@@ -187,7 +201,6 @@ def run(image_path: str, out_path: str, cfg: Dict | None = None, ocr=None):
 
     reading = read_grid(img, cfg, ocr)
     grid, given, cells = reading.grid.copy(), reading.given, reading.cells
-    xs, ys, Minv, warp_size = reading.xs, reading.ys, reading.Minv, reading.warp_size
     backend = cfg["ocr"]["backend"]
 
     print("OCR effectué avec backend '%s'." % backend)
@@ -229,12 +242,7 @@ def run(image_path: str, out_path: str, cfg: Dict | None = None, ocr=None):
     if not ok:
         raise RuntimeError("Le sudoku n'a pas pu être résolu.")
 
-    ov = cfg["overlay"]
-    result = overlay_solution(img, Minv, solved, given,
-                              color=tuple(int(v) for v in ov["color"]),
-                              given_color=tuple(int(v) for v in ov["given_color"]),
-                              scale=float(ov["scale"]), thickness=int(ov["thickness"]),
-                              warp_size=warp_size, xs=xs, ys=ys, show_mode=ov["show_mode"])
+    result = render_solution(img, reading, solved, given, cfg)
     os.makedirs(os.path.dirname(out_path) or ".", exist_ok=True)
     ok = cv2.imwrite(out_path, result)
     if not ok:

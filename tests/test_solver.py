@@ -1,7 +1,7 @@
 import numpy as np
 import pytest
 
-from sudoku_ocr.solver import find_empty, is_valid, solve, solved_ok
+from sudoku_ocr.solver import count_solutions, find_conflicts, find_empty, is_valid, solve, solved_ok
 
 
 def _grid(s: str) -> np.ndarray:
@@ -64,3 +64,24 @@ def test_solved_ok_rejects_invalid_grids():
     incomplete = _grid(SOLUTION)
     incomplete[4, 4] = 0
     assert not solved_ok(incomplete)
+
+
+def test_find_conflicts():
+    grid = _grid(PUZZLE)
+    assert find_conflicts(grid) == []
+    grid[0, 1] = 2  # 2 déjà en (0,0) (ligne + boîte) et en (7,1) (colonne)
+    assert find_conflicts(grid) == [(0, 0), (0, 1), (7, 1)]
+
+
+def test_count_solutions():
+    assert count_solutions(_grid(PUZZLE)) == 1
+    assert count_solutions(np.zeros((9, 9), dtype=int)) == 2   # plafonné
+    grid = _grid(PUZZLE)
+    grid[0, 1] = 2
+    assert count_solutions(grid) == 0                          # conflit
+
+
+def test_count_solutions_does_not_modify_grid():
+    grid = _grid(PUZZLE)
+    count_solutions(grid)
+    assert np.array_equal(grid, _grid(PUZZLE))

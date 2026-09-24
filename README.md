@@ -8,7 +8,7 @@ résout la grille et réécrit la solution sur l'image d'origine.
 TensorFlow n'est pas publié pour Python 3.14 : utiliser Python 3.10 à 3.13.
 
 ```bash
-make venv install          # uv venv -p 3.12 .venv + pip install -e ".[tesseract,train,dev]"
+make venv install          # uv venv -p 3.12 .venv + pip install -e ".[tesseract,train,ui,dev]"
 ```
 
 Sans `make` : `pip install -e ".[train,dev]"` dans un environnement Python ≤ 3.13.
@@ -41,6 +41,23 @@ Les clés acceptées sont dans `src/sudoku_ocr/config.py` ; une clé inconnue es
 
 Debug : `SUDOKU_DEBUG=1` écrit les images intermédiaires de la détection dans
 `data/outputs/debug/` (ou `SUDOKU_DEBUG_DIR`).
+
+## Interface web
+
+```bash
+make ui                    # ou : sudoku-ocr-ui  -> http://localhost:8501
+```
+
+Choisir une image d'exemple ou importer une photo, puis :
+1. vérifier la grille lue : la vue « Lecture » montre la grille redressée, les lignes
+   détectées et les chiffres retenus ; « Détection » montre le contour trouvé ;
+2. corriger au besoin une case dans le tableau (vider une case = case vide) ; les
+   conflits sont signalés et surlignés, ainsi qu'une grille à plusieurs solutions
+   (souvent un chiffre manqué) ;
+3. la solution s'affiche dès que la grille est valide et à solution unique, et se
+   télécharge en PNG.
+
+La barre latérale reprend `configs/default.yaml` (modèle, confiance, affichage).
 
 ## Tests
 
@@ -75,6 +92,6 @@ data/assets_zero_backup/   cases vides (classe 0), écartées de l'entraînement
 data/assets_trash/         images rejetées (floues / peu contrastées)
 data/samples/              images de grilles d'exemple (tests e2e)
 scripts/                   entraînement et outils sur le dataset
-src/sudoku_ocr/            le paquet
+src/sudoku_ocr/            le paquet (ui/ : interface Streamlit)
 tests/
 ```

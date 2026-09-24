@@ -18,10 +18,12 @@ dependencies = [
 [project.optional-dependencies]
 tesseract = ["pytesseract"]        # + binaire tesseract installé sur le système
 train = ["scikit-learn"]           # scripts/train_cnn.py
+ui = ["streamlit>=1.40"]          # sudoku-ocr-ui
 dev = ["pytest"]
 
 [project.scripts]
 sudoku-ocr = "sudoku_ocr.cli:main"
+sudoku-ocr-ui = "sudoku_ocr.ui:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
