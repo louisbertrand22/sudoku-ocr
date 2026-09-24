@@ -110,9 +110,13 @@ def _make_ocr_backend(name: str, cfg: Dict):
     name = (name or "cnn").lower()
     if name == "cnn":
         from .ocr.cnn import CNNOCR
-        weights = cfg.get("ocr", {}).get("cnn_weights", "models/mnist_cnn.keras")
+        mnist_weights = "models/mnist_cnn.keras"
+        weights = cfg.get("ocr", {}).get("cnn_weights", mnist_weights)
         conf = cfg.get("predict", {}).get("conf_min", 0.6)
-        return CNNOCR(weights_path=weights, train_if_missing=True, conf_min=conf)
+        # entraînement MNIST automatique uniquement pour le modèle MNIST : un modèle
+        # custom manquant doit lever une erreur, pas être remplacé par MNIST
+        return CNNOCR(weights_path=weights, train_if_missing=(weights == mnist_weights),
+                      conf_min=conf)
     elif name == "tesseract":
         from .ocr.tesseract import TesseractOCR
         return TesseractOCR(psm=10, whitelist="123456789")

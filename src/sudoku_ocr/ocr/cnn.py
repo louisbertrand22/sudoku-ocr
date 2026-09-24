@@ -1,5 +1,6 @@
 # CNN OCR implementation
 from __future__ import annotations
+import json
 import os
 import numpy as np
 
@@ -15,6 +16,60 @@ except Exception:  # pragma: no cover
     layers = None  # type: ignore
 
 from .base import OCRBase, to_28x28_white_on_black, postprocess_digit
+
+
+# ------------------------- métadonnées du modèle ------------------------- #
+#
+# Chaque modèle est accompagné d'un fichier "<modele>.meta.json" qui décrit
+# le contrat d'entrée/sortie utilisé à l'entraînement :
+#   - classes      : chiffre associé à chaque sortie du softmax (index -> chiffre)
+#   - input_range  : "byte" (pixels 0..255) ou "unit" (pixels 0..1)
+#   - polarity     : "white_on_black" ou "black_on_white"
+
+MNIST_META = {"classes": list(range(10)), "input_range": "byte", "polarity": "white_on_black"}
+
+
+def meta_path_for(model_path: str) -> str:
+    return os.path.splitext(model_path)[0] + ".meta.json"
+
+
+def save_meta(model_path: str, meta: dict) -> str:
+    path = meta_path_for(model_path)
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump(meta, f, indent=2)
+    return path
+
+
+def load_meta(model_path: str) -> dict | None:
+    path = meta_path_for(model_path)
+    if not os.path.exists(path):
+        return None
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _guess_meta(model) -> dict:
+    """Déduit les métadonnées d'un modèle sans fichier .meta.json (modèles antérieurs).
+
+    - 10 sorties -> chiffres 0..9 ; 9 sorties -> chiffres 1..9 (classe 0 retirée)
+    - couche Rescaling présente -> entrée 0..255, sinon entrée 0..1
+    """
+    n_out = int(model.output_shape[-1])
+    if n_out == 10:
+        classes = list(range(10))
+    elif n_out == 9:
+        classes = list(range(1, 10))
+    else:
+        raise ValueError(
+            f"Impossible de deviner les classes d'un modèle à {n_out} sorties : "
+            f"fournissez un fichier .meta.json."
+        )
+    has_rescaling = any(isinstance(l, layers.Rescaling) for l in model.layers)
+    return {
+        "classes": classes,
+        "input_range": "byte" if has_rescaling else "unit",
+        "polarity": "white_on_black",
+    }
 
 
 def _build_cnn():
@@ -42,11 +97,15 @@ def _build_cnn():
 
 class CNNOCR(OCRBase):
     """
-    Backend OCR basé sur un CNN entraîné sur MNIST.
+    Backend OCR basé sur un CNN Keras.
+
+    Charge n'importe quel modèle complet (.keras) : le CNN MNIST par défaut ou
+    un modèle produit par scripts/train_cnn.py. Le prétraitement et le mapping
+    des sorties sont pilotés par le fichier .meta.json associé.
 
     Args:
-        weights_path: chemin des poids Keras à charger/sauver
-        train_if_missing: entraîne sur MNIST si les poids n'existent pas
+        weights_path: chemin du modèle Keras à charger/sauver
+        train_if_missing: entraîne sur MNIST si le modèle n'existe pas
         epochs: nb d'époques pour l'entraînement initial
         batch_size: batch size d'entraînement
         conf_min: seuil de confiance pour accepter la prédiction
@@ -66,52 +125,55 @@ class CNNOCR(OCRBase):
         self.batch_size = batch_size
         self.conf_min = conf_min
 
-        self.model = _build_cnn()
-        self._ensure_weights()
+        self.model, self.meta = self._load_or_train()
+        self.classes = [int(c) for c in self.meta["classes"]]
+        if len(self.classes) != int(self.model.output_shape[-1]):
+            raise ValueError(
+                f"{meta_path_for(weights_path)} déclare {len(self.classes)} classes "
+                f"mais le modèle a {self.model.output_shape[-1]} sorties."
+            )
 
     # -------------------------- lifecycle -------------------------- #
-    def _ensure_weights(self):
-        # charge les poids s'ils existent, sinon entraîne vite sur MNIST
+    def _load_or_train(self):
         if os.path.exists(self.weights_path):
-            self.model.load_weights(self.weights_path)
-            return
+            model = keras.models.load_model(self.weights_path, compile=False)
+            meta = load_meta(self.weights_path) or _guess_meta(model)
+            return model, meta
         if not self.train_if_missing:
-            raise FileNotFoundError(f"Poids introuvables: {self.weights_path}")
-        self._train_and_save()
-
-    def _train_and_save(self):
-        (x_train, y_train), (x_test, y_test) = keras.datasets.mnist.load_data()
-        x_train = x_train[..., np.newaxis]
-        x_test = x_test[..., np.newaxis]
-        self.model.fit(
-            x_train, y_train,
-            validation_data=(x_test, y_test),
-            epochs=self.epochs,
-            batch_size=self.batch_size,
-            verbose=2,
-        )
-        os.makedirs(os.path.dirname(self.weights_path) or ".", exist_ok=True)
-        # on sauvegarde le modèle complet (format .keras)
-        self.model.save(self.weights_path)
+            raise FileNotFoundError(
+                f"Modèle introuvable: {self.weights_path} "
+                f"(entraînez-le avec scripts/train_cnn.py)"
+            )
+        self.train_from_mnist(self.weights_path, self.epochs, self.batch_size)
+        return keras.models.load_model(self.weights_path, compile=False), dict(MNIST_META)
 
     # --------------------------- inference -------------------------- #
+    def _prepare(self, img28: np.ndarray) -> np.ndarray:
+        """Applique le même prétraitement qu'à l'entraînement -> tenseur (1,28,28,1)."""
+        x = to_28x28_white_on_black(img28).astype('float32')
+        if self.meta.get("polarity", "white_on_black") == "black_on_white":
+            x = 255.0 - x
+        if self.meta.get("input_range", "byte") == "unit":
+            x = x / 255.0
+        return x[np.newaxis, ..., np.newaxis]
+
     def predict_digit(self, img28: np.ndarray) -> int:
         if img28 is None:
             return 0
-        x = to_28x28_white_on_black(img28).astype('float32')[np.newaxis, ..., np.newaxis]
-        probs = self.model.predict(x, verbose=0)[0]
-        cls = int(np.argmax(probs))    # 0..9
-        conf = float(np.max(probs))
-        if cls == 0:
-            return 0  # Sudoku n'utilise pas 0
-        return postprocess_digit(cls if conf >= self.conf_min else 0)
+        probs = self.model.predict(self._prepare(img28), verbose=0)[0]
+        idx = int(np.argmax(probs))
+        conf = float(probs[idx])
+        digit = self.classes[idx]
+        if digit == 0 or conf < self.conf_min:
+            return 0  # case vide ou prédiction incertaine
+        return postprocess_digit(digit)
 
     # -------------------------- utilitaires ------------------------- #
     @staticmethod
     def train_from_mnist(weights_out: str = "models/mnist_cnn.keras",
                          epochs: int = 3,
                          batch_size: int = 128) -> str:
-        """(Ré)entraîne rapidement et sauvegarde des poids."""
+        """(Ré)entraîne rapidement sur MNIST et sauvegarde le modèle + métadonnées."""
         if not TF_AVAILABLE:
             raise RuntimeError("TensorFlow n'est pas installé.")
         model = _build_cnn()
@@ -122,4 +184,5 @@ class CNNOCR(OCRBase):
                   epochs=epochs, batch_size=batch_size, verbose=2)
         os.makedirs(os.path.dirname(weights_out) or ".", exist_ok=True)
         model.save(weights_out)
+        save_meta(weights_out, MNIST_META)
         return weights_out

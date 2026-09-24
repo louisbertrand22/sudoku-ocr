@@ -5,7 +5,7 @@ from train_cnn import make_ds
 os.makedirs("data/outputs/debug_pp", exist_ok=True)
 
 # MÊMES options que ton entraînement actuel !
-ds_tr, ds_va, _, _ = make_ds(
+ds_tr, ds_va, _, _, _ = make_ds(
     root="data/assets",
     batch=32,
     val_split=0.15,

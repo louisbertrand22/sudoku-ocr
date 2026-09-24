@@ -6,7 +6,7 @@ from train_cnn import make_ds  # importe depuis ton script
 model = keras.models.load_model("models/sudoku_cnn.keras")
 
 # garde EXACTEMENT les mêmes options que pour l'entraînement
-ds_tr, ds_va, num_classes, _ = make_ds(
+ds_tr, ds_va, num_classes, _, _ = make_ds(
     root="data/assets",
     batch=256,
     val_split=0.15,

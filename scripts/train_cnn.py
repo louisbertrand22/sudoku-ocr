@@ -1,13 +1,20 @@
 #!/usr/bin/env python3
 # scripts/train_from_folder.py
-import os, glob
+import os, glob, sys
 import numpy as np
 import tensorflow as tf
 from tensorflow import keras
 from tensorflow.keras import layers
 from sklearn.model_selection import StratifiedShuffleSplit
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "src"))
+from sudoku_ocr.ocr.cnn import save_meta  # noqa: E402
+
 IMG = 28
+# momentum < 0.99 (défaut Keras) : le dataset ne fait que ~15 pas/époque, les
+# statistiques glissantes de BatchNorm ne convergeraient pas et le modèle
+# s'effondrerait en inférence (val_accuracy ~ hasard)
+BN_MOMENTUM = 0.9
 
 def stratified_split(paths, labels, test_size=0.15, seed=42):
     sss = StratifiedShuffleSplit(n_splits=1, test_size=test_size, random_state=seed)
@@ -104,13 +111,13 @@ def make_ds(root: str,
 def build_model(num_classes: int, bias_prior=None):
     inp = layers.Input((IMG, IMG, 1))
     x = layers.Conv2D(32, 3, padding="same", use_bias=False)(inp)
-    x = layers.BatchNormalization()(x); x = layers.ReLU()(x)
+    x = layers.BatchNormalization(momentum=BN_MOMENTUM)(x); x = layers.ReLU()(x)
     x = layers.MaxPooling2D()(x)
     x = layers.Conv2D(64, 3, padding="same", use_bias=False)(x)
-    x = layers.BatchNormalization()(x); x = layers.ReLU()(x)
+    x = layers.BatchNormalization(momentum=BN_MOMENTUM)(x); x = layers.ReLU()(x)
     x = layers.MaxPooling2D()(x)
     x = layers.Conv2D(128, 3, padding="same", use_bias=False)(x)
-    x = layers.BatchNormalization()(x); x = layers.ReLU()(x)
+    x = layers.BatchNormalization(momentum=BN_MOMENTUM)(x); x = layers.ReLU()(x)
     x = layers.GlobalAveragePooling2D()(x)
     x = layers.Dropout(0.3)(x)
 
@@ -179,7 +186,13 @@ def main():
 
     model.fit(ds_tr, **fit_kwargs)
     model.save(args.out)
-    print(f"✅ Modèle sauvegardé: {args.out}")
+    # contrat d'inférence lu par CNNOCR : index de sortie -> chiffre, échelle, polarité
+    meta_path = save_meta(args.out, {
+        "classes": [int(cls_idx_to_label[i]) for i in range(num_classes)],
+        "input_range": "unit",
+        "polarity": "black_on_white" if args.invert == "none" else "white_on_black",
+    })
+    print(f"✅ Modèle sauvegardé: {args.out} (+ {meta_path})")
 
 if __name__ == "__main__":
     main()
